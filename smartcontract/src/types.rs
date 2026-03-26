@@ -1,5 +1,15 @@
 use soroban_sdk::{contracttype, Address, Bytes, BytesN, String};
 
+/// Supported hash algorithms for HTLC hash locks.
+/// SHA256 is the default and compatible with Bitcoin swaps.
+/// Keccak256 is used for Ethereum-compatible swaps.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum HashAlgorithm {
+    SHA256,
+    Keccak256,
+}
+
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum HTLCStatus {
@@ -19,6 +29,7 @@ pub struct MultiSigConfig {
 
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
+#[allow(clippy::upper_case_acronyms)]
 pub enum Chain {
     Bitcoin,
     Ethereum,
@@ -39,6 +50,7 @@ pub enum SwapStatus {
 
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
+#[allow(clippy::upper_case_acronyms)]
 pub struct HTLC {
     pub sender: Address,
     pub receiver: Address,
@@ -49,6 +61,8 @@ pub struct HTLC {
     pub secret: Option<Bytes>,
     pub created_at: u64,
     pub multi_sig: Option<MultiSigConfig>,
+    /// Hash algorithm used for this HTLC's hash lock.
+    pub hash_algorithm: HashAlgorithm,
 }
 
 #[contracttype]
@@ -63,8 +77,14 @@ pub struct SwapOrder {
     pub from_amount: i128,
     pub to_amount: i128,
     pub expiry: u64,
-    pub matched: bool,
+    pub status: SwapStatus,
     pub counterparty: Option<Address>,
+    /// Minimum amount that must be filled in a single match.
+    pub min_fill_amount: i128,
+    /// Amount filled so far (supports partial fills).
+    pub filled_amount: i128,
+    /// Ledger sequence when this order was created, for time-priority sorting.
+    pub created_ledger: u32,
 }
 
 #[contracttype]
