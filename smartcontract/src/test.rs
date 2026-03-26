@@ -1,10 +1,10 @@
 #![cfg(test)]
 
 use super::*;
-use crate::types::HashAlgorithm;
+use crate::types::{HashAlgorithm, MultiSigConfig, OptMultiSig};
 use soroban_sdk::{
     testutils::{Address as _, Ledger as _},
-    Address, Bytes, BytesN, Env, String,
+    Address, Bytes, BytesN, Env, String, Vec,
 };
 
 fn setup_contract() -> (Env, Address, ChainBridgeClient<'static>) {
@@ -28,7 +28,7 @@ fn create_test_htlc(
     let secret = Bytes::from_slice(env, secret_bytes);
     let hash_lock: BytesN<32> = env.crypto().sha256(&secret).into();
     let time_lock = env.ledger().timestamp() + duration_secs;
-    client.create_htlc(sender, receiver, &amount, &hash_lock, &time_lock)
+    client.create_htlc(sender, receiver, &amount, &hash_lock, &time_lock, &OptMultiSig::None)
 }
 
 // =============================================================================
@@ -71,7 +71,7 @@ fn test_error_invalid_amount_zero_htlc() {
     let hash_lock: BytesN<32> = env.crypto().sha256(&secret).into();
     let time_lock = env.ledger().timestamp() + 86400;
 
-    client.create_htlc(&sender, &receiver, &0, &hash_lock, &time_lock);
+    client.create_htlc(&sender, &receiver, &0, &hash_lock, &time_lock, &OptMultiSig::None);
 }
 
 #[test]
@@ -88,7 +88,7 @@ fn test_error_invalid_amount_negative_htlc() {
     let hash_lock: BytesN<32> = env.crypto().sha256(&secret).into();
     let time_lock = env.ledger().timestamp() + 86400;
 
-    client.create_htlc(&sender, &receiver, &-1000, &hash_lock, &time_lock);
+    client.create_htlc(&sender, &receiver, &-1000, &hash_lock, &time_lock, &OptMultiSig::None);
 }
 
 #[test]
@@ -132,7 +132,7 @@ fn test_error_invalid_timelock_past() {
     let hash_lock: BytesN<32> = env.crypto().sha256(&secret).into();
     let past_time = env.ledger().timestamp() - 100;
 
-    client.create_htlc(&sender, &receiver, &1000, &hash_lock, &past_time);
+    client.create_htlc(&sender, &receiver, &1000, &hash_lock, &past_time, &OptMultiSig::None);
 }
 
 #[test]
@@ -149,7 +149,7 @@ fn test_error_invalid_timelock_now() {
     let hash_lock: BytesN<32> = env.crypto().sha256(&secret).into();
     let now = env.ledger().timestamp();
 
-    client.create_htlc(&sender, &receiver, &1000, &hash_lock, &now);
+    client.create_htlc(&sender, &receiver, &1000, &hash_lock, &now, &OptMultiSig::None);
 }
 
 #[test]
@@ -292,7 +292,7 @@ fn test_error_invalid_secret_wrong_secret() {
     let hash_lock: BytesN<32> = env.crypto().sha256(&original_secret).into();
     let time_lock = env.ledger().timestamp() + 86400;
 
-    let htlc_id = client.create_htlc(&sender, &receiver, &1000, &hash_lock, &time_lock);
+    let htlc_id = client.create_htlc(&sender, &receiver, &1000, &hash_lock, &time_lock, &OptMultiSig::None);
 
     let wrong_secret = Bytes::from_slice(&env, &[2u8; 32]);
     client.claim_htlc(&receiver, &htlc_id, &wrong_secret);
@@ -332,7 +332,7 @@ fn test_error_already_claimed_double_claim() {
     let hash_lock: BytesN<32> = env.crypto().sha256(&secret).into();
     let time_lock = env.ledger().timestamp() + 86400;
 
-    let htlc_id = client.create_htlc(&sender, &receiver, &1000, &hash_lock, &time_lock);
+    let htlc_id = client.create_htlc(&sender, &receiver, &1000, &hash_lock, &time_lock, &OptMultiSig::None);
 
     client.claim_htlc(&receiver, &htlc_id, &secret);
     client.claim_htlc(&receiver, &htlc_id, &secret);
@@ -370,7 +370,7 @@ fn test_error_already_claimed_cannot_refund() {
     let hash_lock: BytesN<32> = env.crypto().sha256(&secret).into();
     let time_lock = env.ledger().timestamp() + 86400;
 
-    let htlc_id = client.create_htlc(&sender, &receiver, &1000, &hash_lock, &time_lock);
+    let htlc_id = client.create_htlc(&sender, &receiver, &1000, &hash_lock, &time_lock, &OptMultiSig::None);
 
     client.claim_htlc(&receiver, &htlc_id, &secret);
 
@@ -397,7 +397,7 @@ fn test_error_htlc_expired_claim_after_timeout() {
     let hash_lock: BytesN<32> = env.crypto().sha256(&secret).into();
     let time_lock = env.ledger().timestamp() + 100;
 
-    let htlc_id = client.create_htlc(&sender, &receiver, &1000, &hash_lock, &time_lock);
+    let htlc_id = client.create_htlc(&sender, &receiver, &1000, &hash_lock, &time_lock, &OptMultiSig::None);
 
     env.ledger().set_timestamp(time_lock + 1);
 
@@ -418,7 +418,7 @@ fn test_error_htlc_expired_claim_at_exact_timeout() {
     let hash_lock: BytesN<32> = env.crypto().sha256(&secret).into();
     let time_lock = env.ledger().timestamp() + 100;
 
-    let htlc_id = client.create_htlc(&sender, &receiver, &1000, &hash_lock, &time_lock);
+    let htlc_id = client.create_htlc(&sender, &receiver, &1000, &hash_lock, &time_lock, &OptMultiSig::None);
 
     env.ledger().set_timestamp(time_lock);
 
@@ -632,7 +632,7 @@ fn test_htlc_claim_before_expiry() {
     let hash_lock: BytesN<32> = env.crypto().sha256(&secret).into();
     let time_lock = env.ledger().timestamp() + 86400;
 
-    let htlc_id = client.create_htlc(&sender, &receiver, &1000, &hash_lock, &time_lock);
+    let htlc_id = client.create_htlc(&sender, &receiver, &1000, &hash_lock, &time_lock, &OptMultiSig::None);
 
     env.ledger().set_timestamp(env.ledger().timestamp() + 43200);
 
@@ -728,7 +728,7 @@ fn test_htlc_claim_one_second_before_expiry() {
     let hash_lock: BytesN<32> = env.crypto().sha256(&secret).into();
     let time_lock = env.ledger().timestamp() + 100;
 
-    let htlc_id = client.create_htlc(&sender, &receiver, &1000, &hash_lock, &time_lock);
+    let htlc_id = client.create_htlc(&sender, &receiver, &1000, &hash_lock, &time_lock, &OptMultiSig::None);
 
     env.ledger().set_timestamp(time_lock - 1);
 
@@ -910,7 +910,7 @@ fn test_sha256_htlc_rejects_keccak256_secret() {
     let time_lock = env.ledger().timestamp() + 86400;
 
     // Lock with SHA256 (default)
-    let htlc_id = client.create_htlc(&sender, &receiver, &1000, &sha256_hash, &time_lock);
+    let htlc_id = client.create_htlc(&sender, &receiver, &1000, &sha256_hash, &time_lock, &OptMultiSig::None);
 
     // Build a keccak-based HTLC and try to claim the SHA256 one with the wrong hash
     let wrong_hash = env.crypto().keccak256(&secret);
@@ -947,7 +947,7 @@ fn test_sha256_htlc_stores_algorithm() {
     let hash_lock: BytesN<32> = env.crypto().sha256(&secret).into();
     let time_lock = env.ledger().timestamp() + 86400;
 
-    let htlc_id = client.create_htlc(&sender, &receiver, &1000, &hash_lock, &time_lock);
+    let htlc_id = client.create_htlc(&sender, &receiver, &1000, &hash_lock, &time_lock, &OptMultiSig::None);
     let htlc = client.get_htlc(&htlc_id);
 
     assert_eq!(htlc.hash_algorithm, HashAlgorithm::SHA256);
@@ -992,7 +992,7 @@ fn test_get_revealed_secret_after_claim() {
     let hash_lock: BytesN<32> = env.crypto().sha256(&secret).into();
     let time_lock = env.ledger().timestamp() + 86400;
 
-    let htlc_id = client.create_htlc(&sender, &receiver, &1000, &hash_lock, &time_lock);
+    let htlc_id = client.create_htlc(&sender, &receiver, &1000, &hash_lock, &time_lock, &OptMultiSig::None);
 
     assert_eq!(client.get_secret(&htlc_id), None);
 
@@ -1382,7 +1382,7 @@ fn test_full_atomic_swap_flow() {
     let secret = Bytes::from_slice(&env, &[0x11u8; 32]);
     let hash_lock: BytesN<32> = env.crypto().sha256(&secret).into();
     let time_lock = env.ledger().timestamp() + 7200;
-    let htlc_id = client.create_htlc(&alice, &bob, &1000, &hash_lock, &time_lock);
+    let htlc_id = client.create_htlc(&alice, &bob, &1000, &hash_lock, &time_lock, &OptMultiSig::None);
 
     // Bob claims the HTLC by revealing the secret
     client.claim_htlc(&bob, &htlc_id, &secret);
@@ -1492,6 +1492,7 @@ fn test_stress_20_htlcs() {
             &((i as i128 + 1) * 100),
             &hash_lock,
             &time_lock,
+            &OptMultiSig::None,
         );
         htlc_ids.push_back(htlc_id);
     }
@@ -1586,4 +1587,610 @@ fn test_storage_metrics_reflect_open_orders() {
     let metrics_after = client.get_storage_metrics();
     assert_eq!(metrics_after.open_orders, 2);
     assert_eq!(metrics_after.total_orders, 3);
+}
+
+// =============================================================================
+// ISSUE #51: COMPREHENSIVE HTLC UNIT TESTS
+// =============================================================================
+
+// ---------------------------------------------------------------------------
+// create_htlc: valid parameters — verify every stored field
+// ---------------------------------------------------------------------------
+
+/// A freshly created HTLC must store sender, receiver, amount, hash_lock,
+/// time_lock, and default to Active status with no secret revealed.
+#[test]
+fn test_create_htlc_stores_all_fields_correctly() {
+    let (env, _, client) = setup_contract();
+    let admin = Address::generate(&env);
+    let sender = Address::generate(&env);
+    let receiver = Address::generate(&env);
+
+    client.init(&admin);
+
+    let secret = Bytes::from_slice(&env, &[0x42u8; 32]);
+    let hash_lock: BytesN<32> = env.crypto().sha256(&secret).into();
+    let time_lock = env.ledger().timestamp() + 3600;
+
+    let htlc_id = client.create_htlc(
+        &sender,
+        &receiver,
+        &5000,
+        &hash_lock,
+        &time_lock,
+        &OptMultiSig::None,
+    );
+
+    let htlc = client.get_htlc(&htlc_id);
+
+    assert_eq!(htlc.sender, sender);
+    assert_eq!(htlc.receiver, receiver);
+    assert_eq!(htlc.amount, 5000);
+    assert_eq!(htlc.hash_lock, hash_lock);
+    assert_eq!(htlc.time_lock, time_lock);
+    assert_eq!(htlc.status, HTLCStatus::Active);
+    assert_eq!(htlc.secret, None);
+    assert_eq!(htlc.hash_algorithm, HashAlgorithm::SHA256);
+}
+
+/// A new HTLC's status must be Active immediately after creation.
+#[test]
+fn test_create_htlc_status_is_active() {
+    let (env, _, client) = setup_contract();
+    let admin = Address::generate(&env);
+    let sender = Address::generate(&env);
+    let receiver = Address::generate(&env);
+
+    client.init(&admin);
+
+    let htlc_id =
+        create_test_htlc(&env, &client, &sender, &receiver, 1000, &[0xFFu8; 32], 86400);
+
+    assert_eq!(client.get_htlc_status(&htlc_id), HTLCStatus::Active);
+}
+
+/// create_htlc with the smallest valid timelock (current_time + 1) must succeed.
+#[test]
+fn test_create_htlc_minimum_valid_timelock() {
+    let (env, _, client) = setup_contract();
+    let admin = Address::generate(&env);
+    let sender = Address::generate(&env);
+    let receiver = Address::generate(&env);
+
+    client.init(&admin);
+
+    let secret = Bytes::from_slice(&env, &[1u8; 32]);
+    let hash_lock: BytesN<32> = env.crypto().sha256(&secret).into();
+    let min_time_lock = env.ledger().timestamp() + 1;
+
+    let htlc_id = client.create_htlc(
+        &sender,
+        &receiver,
+        &1,
+        &hash_lock,
+        &min_time_lock,
+        &OptMultiSig::None,
+    );
+
+    assert_eq!(client.get_htlc_status(&htlc_id), HTLCStatus::Active);
+}
+
+/// Each create_htlc call must return a unique, incrementing ID.
+#[test]
+fn test_create_htlc_returns_unique_ids() {
+    let (env, _, client) = setup_contract();
+    let admin = Address::generate(&env);
+    let sender = Address::generate(&env);
+    let receiver = Address::generate(&env);
+
+    client.init(&admin);
+
+    let id1 = create_test_htlc(&env, &client, &sender, &receiver, 100, &[1u8; 32], 86400);
+    let id2 = create_test_htlc(&env, &client, &sender, &receiver, 200, &[2u8; 32], 86400);
+    let id3 = create_test_htlc(&env, &client, &sender, &receiver, 300, &[3u8; 32], 86400);
+
+    assert_eq!(id1 + 1, id2);
+    assert_eq!(id2 + 1, id3);
+}
+
+// ---------------------------------------------------------------------------
+// Hash validation: secrets of different byte lengths must all be rejected
+// unless they match the stored hash lock
+// ---------------------------------------------------------------------------
+
+/// Claiming with a 1-byte secret must fail: SHA256(1 byte) ≠ SHA256(32 bytes).
+#[test]
+#[should_panic(expected = "Error(Contract, #8)")]
+fn test_hash_validation_1_byte_secret_rejected() {
+    let (env, _, client) = setup_contract();
+    let admin = Address::generate(&env);
+    let sender = Address::generate(&env);
+    let receiver = Address::generate(&env);
+
+    client.init(&admin);
+
+    // Hash lock derived from a 32-byte secret
+    let correct_secret = Bytes::from_slice(&env, &[0xAAu8; 32]);
+    let hash_lock: BytesN<32> = env.crypto().sha256(&correct_secret).into();
+    let time_lock = env.ledger().timestamp() + 86400;
+
+    let htlc_id = client.create_htlc(
+        &sender,
+        &receiver,
+        &1000,
+        &hash_lock,
+        &time_lock,
+        &OptMultiSig::None,
+    );
+
+    let short_secret = Bytes::from_slice(&env, &[0xAAu8; 1]);
+    client.claim_htlc(&receiver, &htlc_id, &short_secret);
+}
+
+/// Claiming with a 16-byte secret must fail.
+#[test]
+#[should_panic(expected = "Error(Contract, #8)")]
+fn test_hash_validation_16_byte_secret_rejected() {
+    let (env, _, client) = setup_contract();
+    let admin = Address::generate(&env);
+    let sender = Address::generate(&env);
+    let receiver = Address::generate(&env);
+
+    client.init(&admin);
+
+    let correct_secret = Bytes::from_slice(&env, &[0xBBu8; 32]);
+    let hash_lock: BytesN<32> = env.crypto().sha256(&correct_secret).into();
+    let time_lock = env.ledger().timestamp() + 86400;
+
+    let htlc_id = client.create_htlc(
+        &sender,
+        &receiver,
+        &1000,
+        &hash_lock,
+        &time_lock,
+        &OptMultiSig::None,
+    );
+
+    let half_secret = Bytes::from_slice(&env, &[0xBBu8; 16]);
+    client.claim_htlc(&receiver, &htlc_id, &half_secret);
+}
+
+/// Claiming with a 64-byte secret must fail.
+#[test]
+#[should_panic(expected = "Error(Contract, #8)")]
+fn test_hash_validation_64_byte_secret_rejected() {
+    let (env, _, client) = setup_contract();
+    let admin = Address::generate(&env);
+    let sender = Address::generate(&env);
+    let receiver = Address::generate(&env);
+
+    client.init(&admin);
+
+    let correct_secret = Bytes::from_slice(&env, &[0xCCu8; 32]);
+    let hash_lock: BytesN<32> = env.crypto().sha256(&correct_secret).into();
+    let time_lock = env.ledger().timestamp() + 86400;
+
+    let htlc_id = client.create_htlc(
+        &sender,
+        &receiver,
+        &1000,
+        &hash_lock,
+        &time_lock,
+        &OptMultiSig::None,
+    );
+
+    let long_secret = Bytes::from_slice(&env, &[0xCCu8; 64]);
+    client.claim_htlc(&receiver, &htlc_id, &long_secret);
+}
+
+/// Claiming with a 100-byte secret must fail.
+#[test]
+#[should_panic(expected = "Error(Contract, #8)")]
+fn test_hash_validation_100_byte_secret_rejected() {
+    let (env, _, client) = setup_contract();
+    let admin = Address::generate(&env);
+    let sender = Address::generate(&env);
+    let receiver = Address::generate(&env);
+
+    client.init(&admin);
+
+    let correct_secret = Bytes::from_slice(&env, &[0xDDu8; 32]);
+    let hash_lock: BytesN<32> = env.crypto().sha256(&correct_secret).into();
+    let time_lock = env.ledger().timestamp() + 86400;
+
+    let htlc_id = client.create_htlc(
+        &sender,
+        &receiver,
+        &1000,
+        &hash_lock,
+        &time_lock,
+        &OptMultiSig::None,
+    );
+
+    let long_secret = Bytes::from_slice(&env, &[0xDDu8; 100]);
+    client.claim_htlc(&receiver, &htlc_id, &long_secret);
+}
+
+/// The correct 32-byte secret must always succeed regardless of byte value.
+#[test]
+fn test_hash_validation_correct_32_byte_secret_succeeds() {
+    let (env, _, client) = setup_contract();
+    let admin = Address::generate(&env);
+    let sender = Address::generate(&env);
+    let receiver = Address::generate(&env);
+
+    client.init(&admin);
+
+    let secret = Bytes::from_slice(&env, &[0x5Au8; 32]);
+    let hash_lock: BytesN<32> = env.crypto().sha256(&secret).into();
+    let time_lock = env.ledger().timestamp() + 86400;
+
+    let htlc_id = client.create_htlc(
+        &sender,
+        &receiver,
+        &1000,
+        &hash_lock,
+        &time_lock,
+        &OptMultiSig::None,
+    );
+
+    client.claim_htlc(&receiver, &htlc_id, &secret);
+    assert_eq!(client.get_htlc_status(&htlc_id), HTLCStatus::Claimed);
+}
+
+// ---------------------------------------------------------------------------
+// MultiSig: sign_htlc and threshold enforcement
+// ---------------------------------------------------------------------------
+
+/// sign_htlc must record the signer's address in the MultiSigConfig.
+#[test]
+fn test_sign_htlc_adds_signer_signature() {
+    let (env, _, client) = setup_contract();
+    let admin = Address::generate(&env);
+    let sender = Address::generate(&env);
+    let receiver = Address::generate(&env);
+    let signer1 = Address::generate(&env);
+    let signer2 = Address::generate(&env);
+
+    client.init(&admin);
+
+    let mut signers = Vec::new(&env);
+    signers.push_back(signer1.clone());
+    signers.push_back(signer2.clone());
+
+    let config = MultiSigConfig {
+        signers,
+        threshold: 2,
+        signatures: Vec::new(&env),
+    };
+
+    let secret = Bytes::from_slice(&env, &[0x11u8; 32]);
+    let hash_lock: BytesN<32> = env.crypto().sha256(&secret).into();
+    let time_lock = env.ledger().timestamp() + 86400;
+
+    let htlc_id = client.create_htlc(
+        &sender,
+        &receiver,
+        &1000,
+        &hash_lock,
+        &time_lock,
+        &OptMultiSig::Config(config),
+    );
+
+    // Sign with signer1
+    client.sign_htlc(&htlc_id, &signer1);
+
+    let htlc = client.get_htlc(&htlc_id);
+    if let OptMultiSig::Config(cfg) = htlc.multi_sig {
+        assert_eq!(cfg.signatures.len(), 1);
+        assert_eq!(cfg.signatures.get(0).unwrap(), signer1);
+    } else {
+        panic!("expected OptMultiSig::Config");
+    }
+}
+
+/// Duplicate signatures must be idempotent — signing twice must not add the
+/// signer a second time.
+#[test]
+fn test_sign_htlc_duplicate_signature_is_idempotent() {
+    let (env, _, client) = setup_contract();
+    let admin = Address::generate(&env);
+    let sender = Address::generate(&env);
+    let receiver = Address::generate(&env);
+    let signer = Address::generate(&env);
+
+    client.init(&admin);
+
+    let mut signers = Vec::new(&env);
+    signers.push_back(signer.clone());
+
+    let config = MultiSigConfig {
+        signers,
+        threshold: 1,
+        signatures: Vec::new(&env),
+    };
+
+    let htlc_id = create_test_htlc(
+        &env,
+        &client,
+        &sender,
+        &receiver,
+        500,
+        &[0x22u8; 32],
+        86400,
+    );
+
+    // Re-create with multi_sig config explicitly
+    let secret = Bytes::from_slice(&env, &[0x33u8; 32]);
+    let hash_lock: BytesN<32> = env.crypto().sha256(&secret).into();
+    let time_lock = env.ledger().timestamp() + 86400;
+    let htlc_id2 = client.create_htlc(
+        &sender,
+        &receiver,
+        &500,
+        &hash_lock,
+        &time_lock,
+        &OptMultiSig::Config(config),
+    );
+
+    client.sign_htlc(&htlc_id2, &signer);
+    client.sign_htlc(&htlc_id2, &signer); // second call must be a no-op
+
+    let htlc = client.get_htlc(&htlc_id2);
+    if let OptMultiSig::Config(cfg) = htlc.multi_sig {
+        assert_eq!(cfg.signatures.len(), 1);
+    } else {
+        panic!("expected OptMultiSig::Config");
+    }
+
+    // Suppress unused variable warning from the first htlc_id
+    let _ = htlc_id;
+}
+
+/// Claiming an HTLC that requires 2 signatures must fail when only 1 is present.
+#[test]
+#[should_panic(expected = "Error(Contract, #22)")]
+fn test_claim_htlc_fails_when_multisig_threshold_not_met() {
+    let (env, _, client) = setup_contract();
+    let admin = Address::generate(&env);
+    let sender = Address::generate(&env);
+    let receiver = Address::generate(&env);
+    let signer1 = Address::generate(&env);
+    let signer2 = Address::generate(&env);
+
+    client.init(&admin);
+
+    let mut signers = Vec::new(&env);
+    signers.push_back(signer1.clone());
+    signers.push_back(signer2.clone());
+
+    let config = MultiSigConfig {
+        signers,
+        threshold: 2,
+        signatures: Vec::new(&env),
+    };
+
+    let secret = Bytes::from_slice(&env, &[0x44u8; 32]);
+    let hash_lock: BytesN<32> = env.crypto().sha256(&secret).into();
+    let time_lock = env.ledger().timestamp() + 86400;
+
+    let htlc_id = client.create_htlc(
+        &sender,
+        &receiver,
+        &1000,
+        &hash_lock,
+        &time_lock,
+        &OptMultiSig::Config(config),
+    );
+
+    client.sign_htlc(&htlc_id, &signer1); // only 1 of 2 required signatures
+
+    // Claim with correct secret but without the second signature — must fail
+    client.claim_htlc(&receiver, &htlc_id, &secret);
+}
+
+/// Once both required signatures are collected, claiming must succeed.
+#[test]
+fn test_claim_htlc_succeeds_when_multisig_threshold_met() {
+    let (env, _, client) = setup_contract();
+    let admin = Address::generate(&env);
+    let sender = Address::generate(&env);
+    let receiver = Address::generate(&env);
+    let signer1 = Address::generate(&env);
+    let signer2 = Address::generate(&env);
+
+    client.init(&admin);
+
+    let mut signers = Vec::new(&env);
+    signers.push_back(signer1.clone());
+    signers.push_back(signer2.clone());
+
+    let config = MultiSigConfig {
+        signers,
+        threshold: 2,
+        signatures: Vec::new(&env),
+    };
+
+    let secret = Bytes::from_slice(&env, &[0x55u8; 32]);
+    let hash_lock: BytesN<32> = env.crypto().sha256(&secret).into();
+    let time_lock = env.ledger().timestamp() + 86400;
+
+    let htlc_id = client.create_htlc(
+        &sender,
+        &receiver,
+        &1000,
+        &hash_lock,
+        &time_lock,
+        &OptMultiSig::Config(config),
+    );
+
+    client.sign_htlc(&htlc_id, &signer1);
+    client.sign_htlc(&htlc_id, &signer2);
+
+    client.claim_htlc(&receiver, &htlc_id, &secret);
+    assert_eq!(client.get_htlc_status(&htlc_id), HTLCStatus::Claimed);
+}
+
+/// sign_htlc by an address not in the signers list must be rejected.
+#[test]
+#[should_panic(expected = "Error(Contract, #23)")]
+fn test_sign_htlc_unauthorized_signer_rejected() {
+    let (env, _, client) = setup_contract();
+    let admin = Address::generate(&env);
+    let sender = Address::generate(&env);
+    let receiver = Address::generate(&env);
+    let authorized_signer = Address::generate(&env);
+    let unauthorized = Address::generate(&env);
+
+    client.init(&admin);
+
+    let mut signers = Vec::new(&env);
+    signers.push_back(authorized_signer.clone());
+
+    let config = MultiSigConfig {
+        signers,
+        threshold: 1,
+        signatures: Vec::new(&env),
+    };
+
+    let secret = Bytes::from_slice(&env, &[0x66u8; 32]);
+    let hash_lock: BytesN<32> = env.crypto().sha256(&secret).into();
+    let time_lock = env.ledger().timestamp() + 86400;
+
+    let htlc_id = client.create_htlc(
+        &sender,
+        &receiver,
+        &1000,
+        &hash_lock,
+        &time_lock,
+        &OptMultiSig::Config(config),
+    );
+
+    client.sign_htlc(&htlc_id, &unauthorized);
+}
+
+/// sign_htlc on an HTLC created without any MultiSig config must be rejected.
+#[test]
+#[should_panic(expected = "Error(Contract, #23)")]
+fn test_sign_htlc_on_non_multisig_htlc_rejected() {
+    let (env, _, client) = setup_contract();
+    let admin = Address::generate(&env);
+    let sender = Address::generate(&env);
+    let receiver = Address::generate(&env);
+    let signer = Address::generate(&env);
+
+    client.init(&admin);
+
+    let htlc_id =
+        create_test_htlc(&env, &client, &sender, &receiver, 1000, &[0x77u8; 32], 86400);
+
+    client.sign_htlc(&htlc_id, &signer);
+}
+
+// ---------------------------------------------------------------------------
+// Pause / unpause: create, claim, and refund must all be blocked when paused
+// ---------------------------------------------------------------------------
+
+/// Pausing the contract must prevent new HTLCs from being created.
+#[test]
+#[should_panic(expected = "Error(Contract, #18)")]
+fn test_paused_contract_blocks_create_htlc() {
+    let (env, _, client) = setup_contract();
+    let admin = Address::generate(&env);
+    let sender = Address::generate(&env);
+    let receiver = Address::generate(&env);
+
+    client.init(&admin);
+    client.pause(&admin);
+
+    let secret = Bytes::from_slice(&env, &[1u8; 32]);
+    let hash_lock: BytesN<32> = env.crypto().sha256(&secret).into();
+    let time_lock = env.ledger().timestamp() + 86400;
+
+    client.create_htlc(
+        &sender,
+        &receiver,
+        &1000,
+        &hash_lock,
+        &time_lock,
+        &OptMultiSig::None,
+    );
+}
+
+/// Pausing must prevent claiming an existing HTLC.
+#[test]
+#[should_panic(expected = "Error(Contract, #18)")]
+fn test_paused_contract_blocks_claim_htlc() {
+    let (env, _, client) = setup_contract();
+    let admin = Address::generate(&env);
+    let sender = Address::generate(&env);
+    let receiver = Address::generate(&env);
+
+    client.init(&admin);
+
+    let secret = Bytes::from_slice(&env, &[1u8; 32]);
+    let hash_lock: BytesN<32> = env.crypto().sha256(&secret).into();
+    let time_lock = env.ledger().timestamp() + 86400;
+
+    let htlc_id = client.create_htlc(
+        &sender,
+        &receiver,
+        &1000,
+        &hash_lock,
+        &time_lock,
+        &OptMultiSig::None,
+    );
+
+    client.pause(&admin);
+
+    client.claim_htlc(&receiver, &htlc_id, &secret);
+}
+
+/// Pausing must prevent refunding an expired HTLC.
+#[test]
+#[should_panic(expected = "Error(Contract, #18)")]
+fn test_paused_contract_blocks_refund_htlc() {
+    let (env, _, client) = setup_contract();
+    let admin = Address::generate(&env);
+    let sender = Address::generate(&env);
+    let receiver = Address::generate(&env);
+
+    client.init(&admin);
+
+    let htlc_id =
+        create_test_htlc(&env, &client, &sender, &receiver, 1000, &[1u8; 32], 100);
+
+    env.ledger().set_timestamp(env.ledger().timestamp() + 101);
+    client.pause(&admin);
+
+    client.refund_htlc(&sender, &htlc_id);
+}
+
+/// Unpausing must restore full HTLC functionality.
+#[test]
+fn test_unpause_restores_htlc_operations() {
+    let (env, _, client) = setup_contract();
+    let admin = Address::generate(&env);
+    let sender = Address::generate(&env);
+    let receiver = Address::generate(&env);
+
+    client.init(&admin);
+    client.pause(&admin);
+    client.unpause(&admin);
+
+    let secret = Bytes::from_slice(&env, &[1u8; 32]);
+    let hash_lock: BytesN<32> = env.crypto().sha256(&secret).into();
+    let time_lock = env.ledger().timestamp() + 86400;
+
+    let htlc_id = client.create_htlc(
+        &sender,
+        &receiver,
+        &1000,
+        &hash_lock,
+        &time_lock,
+        &OptMultiSig::None,
+    );
+
+    client.claim_htlc(&receiver, &htlc_id, &secret);
+    assert_eq!(client.get_htlc_status(&htlc_id), HTLCStatus::Claimed);
 }
