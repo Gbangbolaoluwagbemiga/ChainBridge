@@ -37,7 +37,7 @@ type ToastMessage = {
   type?: "success" | "error" | "info";
 };
 
-const STATUS_OPTIONS = ["all", "active", "claimed", "refunded"];
+const STATUS_OPTIONS = ["all", "active", "claimed", "refunded", "expired"];
 
 function validateSecret(secret: string) {
   const trimmed = secret.trim();
@@ -103,7 +103,7 @@ export default function HTLCStatusPage() {
         const data = await fetchHTLCs({
           participant: participant.trim() || undefined,
           hash_lock: hashLock.trim() || undefined,
-          status: status === "all" ? undefined : status,
+          status: status === "all" || status === "expired" ? undefined : status,
         });
         setHtlcs(data);
         if (!selectedId && data[0]) {
@@ -148,14 +148,20 @@ export default function HTLCStatusPage() {
 
   const enriched = htlcs.map((item) => {
     const secondsRemaining = Math.max(item.time_lock - now, 0);
+    const displayStatus =
+      item.status === "active" && secondsRemaining === 0 ? "expired" : item.status;
     return {
       ...item,
       secondsRemaining,
+      displayStatus,
       urgency: secondsRemaining === 0 ? "critical" : secondsRemaining < 3600 ? "warning" : "normal",
     };
   });
 
-  const activeCount = enriched.filter((item) => item.status === "active").length;
+  const visibleHtlcs =
+    status === "all" ? enriched : enriched.filter((item) => item.displayStatus === status);
+
+  const activeCount = enriched.filter((item) => item.displayStatus === "active").length;
   const claimableCount = enriched.filter((item) => item.can_claim).length;
   const refundableCount = enriched.filter((item) => item.can_refund).length;
 
@@ -400,6 +406,24 @@ export default function HTLCStatusPage() {
                 Clear
               </Button>
             </div>
+
+            <div className="mt-4 flex flex-wrap items-center gap-2">
+              {STATUS_OPTIONS.filter((option) => option !== "all").map((option) => (
+                <button
+                  key={option}
+                  type="button"
+                  onClick={() => setStatus(option)}
+                  className={cn(
+                    "rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] transition",
+                    status === option
+                      ? "border-brand-500 bg-brand-500/10 text-brand-500"
+                      : "border-border bg-surface-raised text-text-secondary"
+                  )}
+                >
+                  {option}
+                </button>
+              ))}
+            </div>
           </Card>
 
           {error && (
@@ -413,12 +437,12 @@ export default function HTLCStatusPage() {
               <Card variant="raised" className="p-10 text-center text-text-secondary">
                 Loading HTLC status…
               </Card>
-            ) : enriched.length === 0 ? (
+            ) : visibleHtlcs.length === 0 ? (
               <Card variant="raised" className="p-10 text-center text-text-secondary">
                 No HTLCs match the current filters.
               </Card>
             ) : (
-              enriched.map((item) => (
+              visibleHtlcs.map((item) => (
                 <button
                   key={item.id}
                   type="button"
@@ -431,23 +455,13 @@ export default function HTLCStatusPage() {
                       : "border-border"
                   )}
                 >
-                  <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-                    <div className="space-y-2">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="rounded-full border border-border bg-surface px-2.5 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-text-muted">
-                          {item.status}
-                        </span>
-                        <span className="text-sm font-semibold text-text-primary">
-                          {item.phase}
-                        </span>
-                      </div>
-                      <p className="font-mono text-sm text-text-primary">{item.id}</p>
-                      <div className="grid gap-1 text-sm text-text-secondary sm:grid-cols-2">
-                        <span>Sender: {shortAddress(item.sender)}</span>
-                        <span>Receiver: {shortAddress(item.receiver)}</span>
-                        <span>Amount: {item.amount.toLocaleString()}</span>
-                        <span>Hash: {shortAddress(item.hash_lock)}</span>
-                      </div>
+                  <div className="space-y-4">
+                    <div className="grid gap-3 text-xs font-semibold uppercase tracking-[0.16em] text-text-muted sm:grid-cols-5">
+                      <span>Status</span>
+                      <span>Amount</span>
+                      <span>Timelock</span>
+                      <span>Counterparty</span>
+                      <span>Chain</span>
                     </div>
 
                     <div className="min-w-[140px] text-left md:text-right">
